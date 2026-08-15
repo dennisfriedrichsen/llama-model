@@ -1,0 +1,8 @@
+# Copy to ~/.config/llama-models.conf. These are already the wrapper defaults,
+# but keeping them here makes future path changes obvious.
+
+LLAMA_SERVER="$HOME/src/github/ggml-org/llama.cpp/build/bin/llama-server"
+LLAMA_MODEL_ROOT="$HOME/models/catalog"
+
+# Optional. Defaults to $LLAMA_MODEL_ROOT/server.args.
+# LLAMA_GLOBAL_ARGS="$HOME/.config/llama-server.args"

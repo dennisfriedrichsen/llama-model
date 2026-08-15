@@ -1,0 +1,195 @@
+#!/bin/sh
+
+# A small, POSIX-sh launcher for llama.cpp's llama-server.
+
+set -eu
+
+CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
+CONFIG_FILE=${LLAMA_MODELS_CONFIG:-$CONFIG_HOME/llama-models.conf}
+
+if [ -r "$CONFIG_FILE" ]; then
+    # This is a user-owned shell configuration file.
+    . "$CONFIG_FILE"
+fi
+
+LLAMA_SERVER=${LLAMA_SERVER:-$HOME/src/github/ggml-org/llama.cpp/build/bin/llama-server}
+LLAMA_MODEL_ROOT=${LLAMA_MODEL_ROOT:-$HOME/models/catalog}
+LLAMA_GLOBAL_ARGS=${LLAMA_GLOBAL_ARGS:-$LLAMA_MODEL_ROOT/server.args}
+
+usage() {
+    cat <<'EOF'
+usage:
+  llama-model list
+  llama-model show ALIAS
+  llama-model add ALIAS MODEL_GGUF [MMPROJ_GGUF]
+  llama-model run ALIAS [LLAMA_SERVER_ARGS ...]
+  llama-model command ALIAS [LLAMA_SERVER_ARGS ...]
+
+Each model lives under $LLAMA_MODEL_ROOT/ALIAS and has stable links named
+model.gguf and, for a vision model, mmproj.gguf. Put global server options in
+$LLAMA_MODEL_ROOT/server.args and per-model options in ALIAS/server.args,
+with exactly one argument per line.
+EOF
+}
+
+die() {
+    printf '%s\n' "llama-model: $*" >&2
+    exit 1
+}
+
+check_alias() {
+    case $1 in
+        ''|*[!A-Za-z0-9._-]*)
+            die "invalid alias '$1' (use letters, digits, dot, underscore, or dash)"
+            ;;
+    esac
+}
+
+model_dir() {
+    printf '%s/%s\n' "$LLAMA_MODEL_ROOT" "$1"
+}
+
+read_args() {
+    args_file=$1
+    [ -r "$args_file" ] || return 0
+
+    while IFS= read -r arg || [ -n "$arg" ]; do
+        case $arg in
+            ''|'#'*) continue ;;
+        esac
+        printf '%s\n' "$arg"
+    done < "$args_file"
+}
+
+resolve_file() {
+    resolved=$(realpath "$1" 2>/dev/null) || die "cannot resolve '$1'"
+    [ -f "$resolved" ] || die "not a regular file: $resolved"
+    printf '%s\n' "$resolved"
+}
+
+quote_arg() {
+    # Print one argument in a form suitable for copying into a POSIX shell.
+    escaped=$(printf '%s' "$1" | sed "s/'/'\\\\''/g")
+    printf "'%s'" "$escaped"
+}
+
+prepare_command() {
+    alias_name=$1
+    shift
+    check_alias "$alias_name"
+
+    directory=$(model_dir "$alias_name")
+    model=$directory/model.gguf
+    projector=$directory/mmproj.gguf
+
+    [ -f "$model" ] || die "unknown alias '$alias_name' (missing $model)"
+
+    # Newline is the delimiter for args files, so values may contain spaces.
+    old_ifs=$IFS
+    IFS='
+'
+    global_args=$(read_args "$LLAMA_GLOBAL_ARGS")
+    model_args=$(read_args "$directory/server.args")
+    set -f
+    if [ -n "$model_args" ]; then
+        set -- $model_args "$@"
+    fi
+    if [ -n "$global_args" ]; then
+        set -- $global_args "$@"
+    fi
+    set +f
+    IFS=$old_ifs
+
+    if [ -f "$projector" ]; then
+        set -- --model "$model" --mmproj "$projector" --alias "$alias_name" "$@"
+    else
+        set -- --model "$model" --alias "$alias_name" "$@"
+    fi
+
+    PREPARED_ARGS=$(printf '%s\n' "$@")
+}
+
+cmd=${1:-}
+case $cmd in
+    list)
+        [ "$#" -eq 1 ] || die "list takes no arguments"
+        [ -d "$LLAMA_MODEL_ROOT" ] || exit 0
+        for directory in "$LLAMA_MODEL_ROOT"/*; do
+            [ -f "$directory/model.gguf" ] || continue
+            printf '%s\n' "${directory##*/}"
+        done | sort
+        ;;
+
+    show)
+        [ "$#" -eq 2 ] || die "show requires one alias"
+        check_alias "$2"
+        directory=$(model_dir "$2")
+        [ -f "$directory/model.gguf" ] || die "unknown alias '$2'"
+        printf 'alias:  %s\n' "$2"
+        printf 'model:  %s\n' "$(realpath "$directory/model.gguf")"
+        if [ -f "$directory/mmproj.gguf" ]; then
+            printf 'mmproj: %s\n' "$(realpath "$directory/mmproj.gguf")"
+        else
+            printf 'mmproj: (none)\n'
+        fi
+        [ ! -r "$directory/server.args" ] || printf 'args:   %s\n' "$directory/server.args"
+        ;;
+
+    add)
+        [ "$#" -eq 3 ] || [ "$#" -eq 4 ] || die "add requires alias, model, and optional mmproj"
+        check_alias "$2"
+        directory=$(model_dir "$2")
+        [ ! -e "$directory" ] || die "alias '$2' already exists"
+        model=$(resolve_file "$3")
+        projector=
+        [ "$#" -eq 3 ] || projector=$(resolve_file "$4")
+        mkdir -p "$directory"
+        ln -s "$model" "$directory/model.gguf"
+        if [ -n "$projector" ]; then
+            ln -s "$projector" "$directory/mmproj.gguf"
+        fi
+        printf 'Added %s\n' "$2"
+        ;;
+
+    run|command)
+        [ "$#" -ge 2 ] || die "$cmd requires an alias"
+        action=$cmd
+        alias_name=$2
+        shift 2
+        prepare_command "$alias_name" "$@"
+
+        old_ifs=$IFS
+        IFS='
+'
+        set -f
+        set -- $PREPARED_ARGS
+        set +f
+        IFS=$old_ifs
+
+        if [ "$action" = command ]; then
+            quote_arg "$LLAMA_SERVER"
+            for arg do
+                printf ' '
+                quote_arg "$arg"
+            done
+            printf '\n'
+            exit 0
+        fi
+
+        [ -x "$LLAMA_SERVER" ] || die "llama-server is not executable: $LLAMA_SERVER"
+        exec "$LLAMA_SERVER" "$@"
+        ;;
+
+    -h|--help|help)
+        usage
+        ;;
+
+    '')
+        usage >&2
+        exit 2
+        ;;
+
+    *)
+        die "unknown command '$cmd'"
+        ;;
+esac
