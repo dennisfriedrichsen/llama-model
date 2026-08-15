@@ -1,8 +1,8 @@
 # llama-model
 
-A small POSIX-shell wrapper that gives local GGUF models short names and adds
-the correct multimodal projector automatically. It is intended for FreeBSD but
-does not depend on FreeBSD-specific shell features.
+A small wrapper and configuration for running llama models on FreeBSD. It gives
+local GGUF models short names and adds the correct multimodal projector
+automatically, using POSIX shell without FreeBSD-specific shell features.
 
 ## Recommended layout
 
