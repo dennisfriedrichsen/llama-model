@@ -24,11 +24,17 @@ usage:
   llama-model add ALIAS MODEL_GGUF [MMPROJ_GGUF]
   llama-model run ALIAS [LLAMA_SERVER_ARGS ...]
   llama-model command ALIAS [LLAMA_SERVER_ARGS ...]
+  llama-model start ALIAS [LLAMA_SERVER_ARGS ...]
+  llama-model stop ALIAS
+  llama-model status [ALIAS]
 
 Each model lives under $LLAMA_MODEL_ROOT/ALIAS and has stable links named
 model.gguf and, for a vision model, mmproj.gguf. Put global server options in
 $LLAMA_MODEL_ROOT/server.args and per-model options in ALIAS/server.args,
 with exactly one argument per line.
+
+start runs a model detached in the background, logging to ALIAS/server.log
+and tracking it via ALIAS/server.pid; stop and status use that pid file.
 EOF
 }
 
@@ -65,6 +71,21 @@ resolve_file() {
     resolved=$(realpath "$1" 2>/dev/null) || die "cannot resolve '$1'"
     [ -f "$resolved" ] || die "not a regular file: $resolved"
     printf '%s\n' "$resolved"
+}
+
+pid_is_running() {
+    kill -0 "$1" 2>/dev/null
+}
+
+print_status() {
+    alias_name=$1
+    directory=$(model_dir "$alias_name")
+    pid_file="$directory/server.pid"
+    if [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"; then
+        printf '%s\trunning\tpid %s\n' "$alias_name" "$(cat "$pid_file")"
+    else
+        printf '%s\tstopped\n' "$alias_name"
+    fi
 }
 
 quote_arg() {
@@ -178,6 +199,74 @@ case $cmd in
 
         [ -x "$LLAMA_SERVER" ] || die "llama-server is not executable: $LLAMA_SERVER"
         exec "$LLAMA_SERVER" "$@"
+        ;;
+
+    start)
+        [ "$#" -ge 2 ] || die "start requires an alias"
+        alias_name=$2
+        shift 2
+        check_alias "$alias_name"
+        directory=$(model_dir "$alias_name")
+        pid_file="$directory/server.pid"
+        log_file="$directory/server.log"
+
+        if [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"; then
+            die "'$alias_name' is already running (pid $(cat "$pid_file"))"
+        fi
+
+        prepare_command "$alias_name" "$@"
+
+        old_ifs=$IFS
+        IFS='
+'
+        set -f
+        set -- $PREPARED_ARGS
+        set +f
+        IFS=$old_ifs
+
+        [ -x "$LLAMA_SERVER" ] || die "llama-server is not executable: $LLAMA_SERVER"
+
+        nohup "$LLAMA_SERVER" "$@" >"$log_file" 2>&1 < /dev/null &
+        server_pid=$!
+        printf '%s\n' "$server_pid" > "$pid_file"
+        printf 'Started %s (pid %s), logging to %s\n' "$alias_name" "$server_pid" "$log_file"
+        ;;
+
+    stop)
+        [ "$#" -eq 2 ] || die "stop requires one alias"
+        check_alias "$2"
+        directory=$(model_dir "$2")
+        pid_file="$directory/server.pid"
+        [ -f "$pid_file" ] || die "'$2' is not running (no pid file)"
+        server_pid=$(cat "$pid_file")
+        if ! pid_is_running "$server_pid"; then
+            rm -f "$pid_file"
+            die "'$2' is not running (stale pid file removed)"
+        fi
+        kill "$server_pid"
+        printf 'Stopping %s (pid %s)...\n' "$2" "$server_pid"
+        i=0
+        while pid_is_running "$server_pid"; do
+            i=$((i + 1))
+            [ "$i" -le 15 ] || die "'$2' (pid $server_pid) did not stop after SIGTERM; try 'kill -9 $server_pid'"
+            sleep 1
+        done
+        rm -f "$pid_file"
+        printf 'Stopped %s\n' "$2"
+        ;;
+
+    status)
+        [ "$#" -eq 1 ] || [ "$#" -eq 2 ] || die "status takes zero or one alias"
+        if [ "$#" -eq 2 ]; then
+            check_alias "$2"
+            print_status "$2"
+        else
+            [ -d "$LLAMA_MODEL_ROOT" ] || exit 0
+            for directory in "$LLAMA_MODEL_ROOT"/*; do
+                [ -f "$directory/model.gguf" ] || continue
+                print_status "${directory##*/}"
+            done | sort
+        fi
         ;;
 
     -h|--help|help)
