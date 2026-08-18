@@ -38,8 +38,8 @@ $LLAMA_MODEL_ROOT/server.args and per-model options in ALIAS/server.args,
 with exactly one argument per line.
 
 start runs a model detached in the background, logging to ALIAS/server.log
-and tracking it via ALIAS/server.pid; stop and status use that pid file.
-restart stops it first if running, then starts it again.
+and tracking it via ALIAS/server.pid and ALIAS/server.addr; stop and status
+use those files. restart stops it first if running, then starts it again.
 
 Anywhere ALIAS is accepted, a plain number is also accepted as the 1-based
 index shown by 'llama-model list' or 'llama-model status' (that index is
@@ -116,19 +116,71 @@ pid_is_running() {
     kill -0 "$1" 2>/dev/null
 }
 
-print_status() {
+alias_index() {
+    target=$1
+    i=0
+    for name in $(list_aliases); do
+        i=$((i + 1))
+        if [ "$name" = "$target" ]; then
+            printf '%s\n' "$i"
+            return
+        fi
+    done
+}
+
+status_row() {
     alias_name=$1
-    width=${2:-0}
-    idx=${3:-}
-    idx_col=
-    [ -z "$idx" ] || idx_col=$(printf '%-4s' "$idx")
+    idx=$2
     directory=$(model_dir "$alias_name")
     pid_file="$directory/server.pid"
+    addr_file="$directory/server.addr"
     if [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"; then
-        printf '%s%-*s  running  pid %s\n' "$idx_col" "$width" "$alias_name" "$(cat "$pid_file")"
+        state=running
+        pid=$(cat "$pid_file")
+        addr=-
+        [ ! -f "$addr_file" ] || addr="http://$(cat "$addr_file")"
     else
-        printf '%s%-*s  stopped\n' "$idx_col" "$width" "$alias_name"
+        state=stopped
+        pid=-
+        addr=-
     fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$idx" "$alias_name" "$state" "$pid" "$addr"
+}
+
+render_table() {
+    # Read tab-separated rows (first row is the header) from stdin and
+    # print them as an ASCII box table, sized to the widest cell per column.
+    awk -F '\t' '
+        {
+            n++
+            for (i = 1; i <= NF; i++) {
+                row[n, i] = $i
+                if (length($i) > w[i]) w[i] = length($i)
+            }
+            if (n == 1) ncols = NF
+        }
+        END {
+            if (n == 0) exit
+            sep = "+"
+            for (i = 1; i <= ncols; i++) {
+                for (j = 0; j < w[i] + 2; j++) sep = sep "-"
+                sep = sep "+"
+            }
+            print sep
+            for (r = 1; r <= n; r++) {
+                line = "|"
+                for (i = 1; i <= ncols; i++) {
+                    cell = row[r, i]
+                    line = line " " cell
+                    for (j = length(cell); j < w[i]; j++) line = line " "
+                    line = line " |"
+                }
+                print line
+                if (r == 1) print sep
+            }
+            print sep
+        }
+    '
 }
 
 last_flag_value() {
@@ -193,6 +245,7 @@ do_start() {
     shift
     directory=$(model_dir "$alias_name")
     pid_file="$directory/server.pid"
+    addr_file="$directory/server.addr"
     log_file="$directory/server.log"
 
     if [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"; then
@@ -219,6 +272,7 @@ do_start() {
     nohup "$LLAMA_SERVER" "$@" >"$log_file" 2>&1 < /dev/null &
     server_pid=$!
     printf '%s\n' "$server_pid" > "$pid_file"
+    printf '%s:%s\n' "$host" "$port" > "$addr_file"
     printf 'Started %s (pid %s) at http://%s:%s, logging to %s\n' "$alias_name" "$server_pid" "$host" "$port" "$log_file"
 }
 
@@ -226,10 +280,11 @@ do_stop() {
     alias_name=$1
     directory=$(model_dir "$alias_name")
     pid_file="$directory/server.pid"
+    addr_file="$directory/server.addr"
     [ -f "$pid_file" ] || die "'$alias_name' is not running (no pid file)"
     server_pid=$(cat "$pid_file")
     if ! pid_is_running "$server_pid"; then
-        rm -f "$pid_file"
+        rm -f "$pid_file" "$addr_file"
         die "'$alias_name' is not running (stale pid file removed)"
     fi
     kill "$server_pid"
@@ -240,7 +295,7 @@ do_stop() {
         [ "$i" -le 15 ] || die "'$alias_name' (pid $server_pid) did not stop after SIGTERM; try 'kill -9 $server_pid'"
         sleep 1
     done
-    rm -f "$pid_file"
+    rm -f "$pid_file" "$addr_file"
     printf 'Stopped %s\n' "$alias_name"
 }
 
@@ -349,18 +404,20 @@ case $cmd in
         if [ "$#" -eq 2 ]; then
             alias_name=$(resolve_ref "$2")
             check_alias "$alias_name"
-            print_status "$alias_name"
+            idx=$(alias_index "$alias_name")
+            {
+                printf 'ID\tALIAS\tSTATE\tPID\tADDRESS\n'
+                status_row "$alias_name" "$idx"
+            } | render_table
         else
-            width=0
-            for name in $(list_aliases); do
-                len=${#name}
-                [ "$len" -le "$width" ] || width=$len
-            done
-            i=0
-            for name in $(list_aliases); do
-                i=$((i + 1))
-                print_status "$name" "$width" "$i"
-            done
+            {
+                printf 'ID\tALIAS\tSTATE\tPID\tADDRESS\n'
+                i=0
+                for name in $(list_aliases); do
+                    i=$((i + 1))
+                    status_row "$name" "$i"
+                done
+            } | render_table
         fi
         ;;
 
