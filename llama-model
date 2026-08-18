@@ -4,6 +4,8 @@
 
 set -eu
 
+VERSION=dev
+
 CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 CONFIG_FILE=${LLAMA_MODELS_CONFIG:-$CONFIG_HOME/llama-models.conf}
 
@@ -27,6 +29,7 @@ usage:
   llama-model start ALIAS [LLAMA_SERVER_ARGS ...]
   llama-model stop ALIAS
   llama-model status [ALIAS]
+  llama-model --version
 
 Each model lives under $LLAMA_MODEL_ROOT/ALIAS and has stable links named
 model.gguf and, for a vision model, mmproj.gguf. Put global server options in
@@ -271,6 +274,10 @@ case $cmd in
 
     -h|--help|help)
         usage
+        ;;
+
+    -v|--version|version)
+        printf 'llama-model %s\n' "$VERSION"
         ;;
 
     '')

@@ -33,11 +33,14 @@ can retain its descriptive download name while commands use a memorable alias.
 Install it for your user (add `~/bin` to `PATH` if it is not already there):
 
 ```sh
-mkdir -p ~/bin ~/.config ~/models/catalog
-install -m 0755 llama-model ~/bin/llama-model
-install -m 0644 llama-models.conf.example ~/.config/llama-models.conf
-install -m 0644 server.args.example ~/models/catalog/server.args
+make install
 ```
+
+This installs `llama-model` to `~/bin` (override with `PREFIX=...`), and drops
+the example config files into `~/.config/llama-models.conf` and
+`~/models/catalog/server.args` only if those files don't already exist, so
+re-running `make install` to pick up script updates never clobbers your
+edited config. Run `make uninstall` to remove the installed script.
 
 Edit the two installed configuration files for your binary, storage, host,
 port, context size, and hardware. Each `server.args` line is exactly one
