@@ -28,6 +28,7 @@ usage:
   llama-model command ALIAS [LLAMA_SERVER_ARGS ...]
   llama-model start ALIAS [LLAMA_SERVER_ARGS ...]
   llama-model stop ALIAS
+  llama-model restart ALIAS [LLAMA_SERVER_ARGS ...]
   llama-model status [ALIAS]
   llama-model --version
 
@@ -38,6 +39,11 @@ with exactly one argument per line.
 
 start runs a model detached in the background, logging to ALIAS/server.log
 and tracking it via ALIAS/server.pid; stop and status use that pid file.
+restart stops it first if running, then starts it again.
+
+Anywhere ALIAS is accepted, a plain number is also accepted as the 1-based
+index shown by 'llama-model list' or 'llama-model status' (that index is
+positional and can shift as models are added or removed).
 EOF
 }
 
@@ -56,6 +62,36 @@ check_alias() {
 
 model_dir() {
     printf '%s/%s\n' "$LLAMA_MODEL_ROOT" "$1"
+}
+
+list_aliases() {
+    [ -d "$LLAMA_MODEL_ROOT" ] || return 0
+    for directory in "$LLAMA_MODEL_ROOT"/*; do
+        [ -f "$directory/model.gguf" ] || continue
+        printf '%s\n' "${directory##*/}"
+    done | sort
+}
+
+resolve_ref() {
+    # A purely numeric ref is a 1-based index into 'list_aliases' output
+    # (as shown by 'llama-model list'/'status'); anything else passes
+    # through unchanged as a literal alias name.
+    case $1 in
+        ''|*[!0-9]*)
+            printf '%s\n' "$1"
+            return
+            ;;
+    esac
+    n=$1
+    i=0
+    for name in $(list_aliases); do
+        i=$((i + 1))
+        if [ "$i" -eq "$n" ]; then
+            printf '%s\n' "$name"
+            return
+        fi
+    done
+    die "no model at index $n (see 'llama-model list')"
 }
 
 read_args() {
@@ -82,13 +118,32 @@ pid_is_running() {
 
 print_status() {
     alias_name=$1
+    width=${2:-0}
+    idx=${3:-}
+    idx_col=
+    [ -z "$idx" ] || idx_col=$(printf '%-4s' "$idx")
     directory=$(model_dir "$alias_name")
     pid_file="$directory/server.pid"
     if [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"; then
-        printf '%s\trunning\tpid %s\n' "$alias_name" "$(cat "$pid_file")"
+        printf '%s%-*s  running  pid %s\n' "$idx_col" "$width" "$alias_name" "$(cat "$pid_file")"
     else
-        printf '%s\tstopped\n' "$alias_name"
+        printf '%s%-*s  stopped\n' "$idx_col" "$width" "$alias_name"
     fi
+}
+
+last_flag_value() {
+    # Scan "$@" (already split on the delimiter used by llama-server's
+    # last-flag-wins semantics) for the last value of a given flag, e.g.
+    # --port. Prints nothing if the flag is absent.
+    flag=$1
+    shift
+    value=
+    prev=
+    for arg do
+        [ "$prev" != "$flag" ] || value=$arg
+        prev=$arg
+    done
+    [ -z "$value" ] || printf '%s\n' "$value"
 }
 
 quote_arg() {
@@ -133,23 +188,80 @@ prepare_command() {
     PREPARED_ARGS=$(printf '%s\n' "$@")
 }
 
+do_start() {
+    alias_name=$1
+    shift
+    directory=$(model_dir "$alias_name")
+    pid_file="$directory/server.pid"
+    log_file="$directory/server.log"
+
+    if [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"; then
+        die "'$alias_name' is already running (pid $(cat "$pid_file"))"
+    fi
+
+    prepare_command "$alias_name" "$@"
+
+    old_ifs=$IFS
+    IFS='
+'
+    set -f
+    set -- $PREPARED_ARGS
+    set +f
+    IFS=$old_ifs
+
+    [ -x "$LLAMA_SERVER" ] || die "llama-server is not executable: $LLAMA_SERVER"
+
+    host=$(last_flag_value --host "$@")
+    port=$(last_flag_value --port "$@")
+    host=${host:-127.0.0.1}
+    port=${port:-8080}
+
+    nohup "$LLAMA_SERVER" "$@" >"$log_file" 2>&1 < /dev/null &
+    server_pid=$!
+    printf '%s\n' "$server_pid" > "$pid_file"
+    printf 'Started %s (pid %s) at http://%s:%s, logging to %s\n' "$alias_name" "$server_pid" "$host" "$port" "$log_file"
+}
+
+do_stop() {
+    alias_name=$1
+    directory=$(model_dir "$alias_name")
+    pid_file="$directory/server.pid"
+    [ -f "$pid_file" ] || die "'$alias_name' is not running (no pid file)"
+    server_pid=$(cat "$pid_file")
+    if ! pid_is_running "$server_pid"; then
+        rm -f "$pid_file"
+        die "'$alias_name' is not running (stale pid file removed)"
+    fi
+    kill "$server_pid"
+    printf 'Stopping %s (pid %s)...\n' "$alias_name" "$server_pid"
+    i=0
+    while pid_is_running "$server_pid"; do
+        i=$((i + 1))
+        [ "$i" -le 15 ] || die "'$alias_name' (pid $server_pid) did not stop after SIGTERM; try 'kill -9 $server_pid'"
+        sleep 1
+    done
+    rm -f "$pid_file"
+    printf 'Stopped %s\n' "$alias_name"
+}
+
 cmd=${1:-}
 case $cmd in
     list)
         [ "$#" -eq 1 ] || die "list takes no arguments"
-        [ -d "$LLAMA_MODEL_ROOT" ] || exit 0
-        for directory in "$LLAMA_MODEL_ROOT"/*; do
-            [ -f "$directory/model.gguf" ] || continue
-            printf '%s\n' "${directory##*/}"
-        done | sort
+        i=0
+        for name in $(list_aliases); do
+            i=$((i + 1))
+            printf '%s\t%s\n' "$i" "$name"
+        done
         ;;
 
     show)
         [ "$#" -eq 2 ] || die "show requires one alias"
-        check_alias "$2"
-        directory=$(model_dir "$2")
-        [ -f "$directory/model.gguf" ] || die "unknown alias '$2'"
-        printf 'alias:  %s\n' "$2"
+        alias_name=$(resolve_ref "$2")
+        check_alias "$alias_name"
+        directory=$(model_dir "$alias_name")
+        [ -f "$directory/model.gguf" ] || die "unknown alias '$alias_name'"
+        printf 'alias:  %s\n' "$alias_name"
         printf 'model:  %s\n' "$(realpath "$directory/model.gguf")"
         if [ -f "$directory/mmproj.gguf" ]; then
             printf 'mmproj: %s\n' "$(realpath "$directory/mmproj.gguf")"
@@ -178,7 +290,7 @@ case $cmd in
     run|command)
         [ "$#" -ge 2 ] || die "$cmd requires an alias"
         action=$cmd
-        alias_name=$2
+        alias_name=$(resolve_ref "$2")
         shift 2
         prepare_command "$alias_name" "$@"
 
@@ -206,69 +318,49 @@ case $cmd in
 
     start)
         [ "$#" -ge 2 ] || die "start requires an alias"
-        alias_name=$2
+        alias_name=$(resolve_ref "$2")
         shift 2
         check_alias "$alias_name"
-        directory=$(model_dir "$alias_name")
-        pid_file="$directory/server.pid"
-        log_file="$directory/server.log"
-
-        if [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"; then
-            die "'$alias_name' is already running (pid $(cat "$pid_file"))"
-        fi
-
-        prepare_command "$alias_name" "$@"
-
-        old_ifs=$IFS
-        IFS='
-'
-        set -f
-        set -- $PREPARED_ARGS
-        set +f
-        IFS=$old_ifs
-
-        [ -x "$LLAMA_SERVER" ] || die "llama-server is not executable: $LLAMA_SERVER"
-
-        nohup "$LLAMA_SERVER" "$@" >"$log_file" 2>&1 < /dev/null &
-        server_pid=$!
-        printf '%s\n' "$server_pid" > "$pid_file"
-        printf 'Started %s (pid %s), logging to %s\n' "$alias_name" "$server_pid" "$log_file"
+        do_start "$alias_name" "$@"
         ;;
 
     stop)
         [ "$#" -eq 2 ] || die "stop requires one alias"
-        check_alias "$2"
-        directory=$(model_dir "$2")
+        alias_name=$(resolve_ref "$2")
+        check_alias "$alias_name"
+        do_stop "$alias_name"
+        ;;
+
+    restart)
+        [ "$#" -ge 2 ] || die "restart requires an alias"
+        alias_name=$(resolve_ref "$2")
+        shift 2
+        check_alias "$alias_name"
+        directory=$(model_dir "$alias_name")
         pid_file="$directory/server.pid"
-        [ -f "$pid_file" ] || die "'$2' is not running (no pid file)"
-        server_pid=$(cat "$pid_file")
-        if ! pid_is_running "$server_pid"; then
-            rm -f "$pid_file"
-            die "'$2' is not running (stale pid file removed)"
+        if [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"; then
+            do_stop "$alias_name"
         fi
-        kill "$server_pid"
-        printf 'Stopping %s (pid %s)...\n' "$2" "$server_pid"
-        i=0
-        while pid_is_running "$server_pid"; do
-            i=$((i + 1))
-            [ "$i" -le 15 ] || die "'$2' (pid $server_pid) did not stop after SIGTERM; try 'kill -9 $server_pid'"
-            sleep 1
-        done
-        rm -f "$pid_file"
-        printf 'Stopped %s\n' "$2"
+        do_start "$alias_name" "$@"
         ;;
 
     status)
         [ "$#" -eq 1 ] || [ "$#" -eq 2 ] || die "status takes zero or one alias"
         if [ "$#" -eq 2 ]; then
-            check_alias "$2"
-            print_status "$2"
+            alias_name=$(resolve_ref "$2")
+            check_alias "$alias_name"
+            print_status "$alias_name"
         else
-            [ -d "$LLAMA_MODEL_ROOT" ] || exit 0
-            for directory in "$LLAMA_MODEL_ROOT"/*; do
-                [ -f "$directory/model.gguf" ] || continue
-                print_status "${directory##*/}"
-            done | sort
+            width=0
+            for name in $(list_aliases); do
+                len=${#name}
+                [ "$len" -le "$width" ] || width=$len
+            done
+            i=0
+            for name in $(list_aliases); do
+                i=$((i + 1))
+                print_status "$name" "$width" "$i"
+            done
         fi
         ;;
 
