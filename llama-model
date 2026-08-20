@@ -37,6 +37,10 @@ model.gguf and, for a vision model, mmproj.gguf. Put global server options in
 $LLAMA_MODEL_ROOT/server.args and per-model options in ALIAS/server.args,
 with exactly one argument per line.
 
+add writes a --port into the new alias's server.args automatically, one past
+the highest --port already in use across the global args file and every
+other alias, so newly added models don't collide on the default port.
+
 start runs a model detached in the background, logging to ALIAS/server.log
 and tracking it via ALIAS/server.pid and ALIAS/server.addr; stop and status
 use those files. restart stops it first if running, then starts it again.
@@ -110,6 +114,29 @@ resolve_file() {
     resolved=$(realpath "$1" 2>/dev/null) || die "cannot resolve '$1'"
     [ -f "$resolved" ] || die "not a regular file: $resolved"
     printf '%s\n' "$resolved"
+}
+
+next_free_port() {
+    # Highest --port seen across the global args file and every existing
+    # alias's server.args, plus one; 8080 (llama-server's own default) if
+    # none is set anywhere yet.
+    max=$(
+        {
+            read_args "$LLAMA_GLOBAL_ARGS"
+            for directory in "$LLAMA_MODEL_ROOT"/*; do
+                [ -f "$directory/model.gguf" ] || continue
+                read_args "$directory/server.args"
+            done
+        } 2>/dev/null | awk '
+            /^--port$/ { getline p; if (p + 0 > max + 0) max = p + 0 }
+            END { print max + 0 }
+        '
+    )
+    if [ "$max" -eq 0 ]; then
+        printf '8080\n'
+    else
+        printf '%s\n' "$((max + 1))"
+    fi
 }
 
 pid_is_running() {
@@ -339,7 +366,9 @@ case $cmd in
         if [ -n "$projector" ]; then
             ln -s "$projector" "$directory/mmproj.gguf"
         fi
-        printf 'Added %s\n' "$2"
+        port=$(next_free_port)
+        printf -- '--port\n%s\n' "$port" > "$directory/server.args"
+        printf 'Added %s (port %s)\n' "$2" "$port"
         ;;
 
     run|command)
