@@ -1,8 +1,12 @@
 # Copy to ~/.config/llama-models.conf. These are already the wrapper defaults,
 # but keeping them here makes future path changes obvious.
+#
+# Each uses ${VAR:-default} so an environment variable already set before
+# invoking llama-model (e.g. LLAMA_MODEL_ROOT=/tmp/x llama-model ...) takes
+# precedence over this file, instead of this file silently overriding it.
 
-LLAMA_SERVER="$HOME/src/github/ggml-org/llama.cpp/build/bin/llama-server"
-LLAMA_MODEL_ROOT="$HOME/models/catalog"
+LLAMA_SERVER=${LLAMA_SERVER:-"$HOME/src/github/ggml-org/llama.cpp/build/bin/llama-server"}
+LLAMA_MODEL_ROOT=${LLAMA_MODEL_ROOT:-"$HOME/models/catalog"}
 
 # Optional. Defaults to $LLAMA_MODEL_ROOT/server.args.
-# LLAMA_GLOBAL_ARGS="$HOME/.config/llama-server.args"
+# LLAMA_GLOBAL_ARGS=${LLAMA_GLOBAL_ARGS:-"$HOME/.config/llama-server.args"}
