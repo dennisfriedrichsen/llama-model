@@ -24,6 +24,7 @@ usage:
   llama-model list
   llama-model show ALIAS
   llama-model add ALIAS MODEL_GGUF [MMPROJ_GGUF]
+  llama-model remove ALIAS [--force]
   llama-model run ALIAS [LLAMA_SERVER_ARGS ...]
   llama-model command ALIAS [LLAMA_SERVER_ARGS ...]
   llama-model start ALIAS [LLAMA_SERVER_ARGS ...]
@@ -41,6 +42,10 @@ with exactly one argument per line.
 add writes a --port into the new alias's server.args automatically, one past
 the highest --port already in use across the global args file and every
 other alias, so newly added models don't collide on the default port.
+
+remove deletes ALIAS's catalog directory (the model.gguf/mmproj.gguf links,
+not the underlying downloaded files). It refuses while the alias is running
+unless --force is given, in which case it stops it first.
 
 start runs a model detached in the background, logging to ALIAS/server.log
 and tracking it via ALIAS/server.pid and ALIAS/server.addr; stop and status
@@ -384,6 +389,27 @@ case $cmd in
         port=$(next_free_port)
         printf -- '--port\n%s\n' "$port" > "$directory/server.args"
         printf 'Added %s (port %s)\n' "$2" "$port"
+        ;;
+
+    remove)
+        [ "$#" -ge 2 ] || die "remove requires an alias"
+        alias_name=$(resolve_ref "$2")
+        shift 2
+        check_alias "$alias_name"
+        force=0
+        if [ "$#" -eq 1 ] && [ "$1" = "--force" ]; then
+            force=1
+            shift
+        fi
+        [ "$#" -eq 0 ] || die "remove: unknown argument '$1'"
+        directory=$(model_dir "$alias_name")
+        [ -f "$directory/model.gguf" ] || die "unknown alias '$alias_name'"
+        if alias_is_running "$alias_name"; then
+            [ "$force" -eq 1 ] || die "'$alias_name' is running; stop it first or pass --force"
+            do_stop "$alias_name"
+        fi
+        rm -rf "$directory"
+        printf 'Removed %s\n' "$alias_name"
         ;;
 
     run|command)
