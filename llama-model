@@ -31,7 +31,7 @@ usage:
   llama-model stop ALIAS|--all
   llama-model restart ALIAS|--all [LLAMA_SERVER_ARGS ...]
   llama-model logs ALIAS [-f|--follow] [-n LINES]
-  llama-model status [ALIAS]
+  llama-model status [--running] [ALIAS]
   llama-model --version
 
 Each model lives under $LLAMA_MODEL_ROOT/ALIAS and has stable links named
@@ -54,6 +54,8 @@ use those files. restart stops it first if running, then starts it again.
 
 logs prints the last LINES lines (default 50) of ALIAS/server.log; -f follows
 it like 'tail -f'.
+
+status --running lists only running aliases (no ALIAS may be given with it).
 
 Anywhere ALIAS is accepted, a plain number is also accepted as the 1-based
 index shown by 'llama-model list' or 'llama-model status' (that index is
@@ -529,7 +531,13 @@ case $cmd in
         ;;
 
     status)
+        running_only=0
+        if [ "$#" -ge 2 ] && [ "$2" = "--running" ]; then
+            running_only=1
+            shift
+        fi
         [ "$#" -eq 1 ] || [ "$#" -eq 2 ] || die "status takes zero or one alias"
+        [ "$running_only" -eq 0 ] || [ "$#" -eq 1 ] || die "status --running takes no alias"
         if [ "$#" -eq 2 ]; then
             alias_name=$(resolve_ref "$2")
             check_alias "$alias_name"
@@ -539,14 +547,24 @@ case $cmd in
                 status_row "$alias_name" "$idx"
             } | render_table
         else
-            {
-                printf 'ID\tALIAS\tSTATE\tPID\tADDRESS\n'
+            rows=$(
                 i=0
                 for name in $(list_aliases); do
                     i=$((i + 1))
+                    if [ "$running_only" -eq 1 ]; then
+                        alias_is_running "$name" || continue
+                    fi
                     status_row "$name" "$i"
                 done
-            } | render_table
+            )
+            if [ "$running_only" -eq 1 ] && [ -z "$rows" ]; then
+                printf 'No running models.\n'
+            else
+                {
+                    printf 'ID\tALIAS\tSTATE\tPID\tADDRESS\n'
+                    [ -z "$rows" ] || printf '%s\n' "$rows"
+                } | render_table
+            fi
         fi
         ;;
 
