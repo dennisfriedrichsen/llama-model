@@ -27,8 +27,8 @@ usage:
   llama-model run ALIAS [LLAMA_SERVER_ARGS ...]
   llama-model command ALIAS [LLAMA_SERVER_ARGS ...]
   llama-model start ALIAS [LLAMA_SERVER_ARGS ...]
-  llama-model stop ALIAS
-  llama-model restart ALIAS [LLAMA_SERVER_ARGS ...]
+  llama-model stop ALIAS|--all
+  llama-model restart ALIAS|--all [LLAMA_SERVER_ARGS ...]
   llama-model status [ALIAS]
   llama-model --version
 
@@ -40,6 +40,7 @@ with exactly one argument per line.
 start runs a model detached in the background, logging to ALIAS/server.log
 and tracking it via ALIAS/server.pid and ALIAS/server.addr; stop and status
 use those files. restart stops it first if running, then starts it again.
+'--all' in place of ALIAS acts on every alias currently reported as running.
 
 Anywhere ALIAS is accepted, a plain number is also accepted as the 1-based
 index shown by 'llama-model list' or 'llama-model status' (that index is
@@ -114,6 +115,12 @@ resolve_file() {
 
 pid_is_running() {
     kill -0 "$1" 2>/dev/null
+}
+
+alias_is_running() {
+    directory=$(model_dir "$1")
+    pid_file="$directory/server.pid"
+    [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"
 }
 
 alias_index() {
@@ -380,23 +387,47 @@ case $cmd in
         ;;
 
     stop)
-        [ "$#" -eq 2 ] || die "stop requires one alias"
-        alias_name=$(resolve_ref "$2")
-        check_alias "$alias_name"
-        do_stop "$alias_name"
+        [ "$#" -ge 2 ] || die "stop requires an alias or --all"
+        if [ "$2" = "--all" ]; then
+            [ "$#" -eq 2 ] || die "stop --all takes no further arguments"
+            any=0
+            for name in $(list_aliases); do
+                if alias_is_running "$name"; then
+                    do_stop "$name"
+                    any=1
+                fi
+            done
+            [ "$any" -eq 1 ] || printf 'No running models.\n'
+        else
+            [ "$#" -eq 2 ] || die "stop requires one alias"
+            alias_name=$(resolve_ref "$2")
+            check_alias "$alias_name"
+            do_stop "$alias_name"
+        fi
         ;;
 
     restart)
-        [ "$#" -ge 2 ] || die "restart requires an alias"
-        alias_name=$(resolve_ref "$2")
-        shift 2
-        check_alias "$alias_name"
-        directory=$(model_dir "$alias_name")
-        pid_file="$directory/server.pid"
-        if [ -f "$pid_file" ] && pid_is_running "$(cat "$pid_file")"; then
-            do_stop "$alias_name"
+        [ "$#" -ge 2 ] || die "restart requires an alias or --all"
+        if [ "$2" = "--all" ]; then
+            shift 2
+            any=0
+            for name in $(list_aliases); do
+                if alias_is_running "$name"; then
+                    do_stop "$name"
+                    do_start "$name" "$@"
+                    any=1
+                fi
+            done
+            [ "$any" -eq 1 ] || printf 'No running models.\n'
+        else
+            alias_name=$(resolve_ref "$2")
+            shift 2
+            check_alias "$alias_name"
+            if alias_is_running "$alias_name"; then
+                do_stop "$alias_name"
+            fi
+            do_start "$alias_name" "$@"
         fi
-        do_start "$alias_name" "$@"
         ;;
 
     status)
