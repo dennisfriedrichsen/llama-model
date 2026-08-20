@@ -140,6 +140,10 @@ status_row() {
         addr=-
         [ ! -f "$addr_file" ] || addr="http://$(cat "$addr_file")"
     else
+        # A pid file that didn't pass pid_is_running is stale (the process
+        # died without going through 'stop'); reap it so status doesn't
+        # keep reporting leftover state indefinitely.
+        [ ! -f "$pid_file" ] || rm -f "$pid_file" "$addr_file"
         state=stopped
         pid=-
         addr=-
