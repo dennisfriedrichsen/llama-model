@@ -1,0 +1,365 @@
+.Dd August 22, 2026
+.Dt LLAMA-MODEL 1
+.Os
+.Sh NAME
+.Nm llama-model
+.Nd manage and run local GGUF models with llama-server
+.Sh SYNOPSIS
+.Nm
+.Cm list
+.Nm
+.Cm show
+.Ar ALIAS
+.Nm
+.Cm add
+.Ar ALIAS MODEL_GGUF
+.Op Ar MMPROJ_GGUF
+.Nm
+.Cm remove
+.Ar ALIAS
+.Op Fl -force
+.Nm
+.Cm run
+.Ar ALIAS
+.Op Ar LLAMA_SERVER_ARGS ...
+.Nm
+.Cm command
+.Ar ALIAS
+.Op Ar LLAMA_SERVER_ARGS ...
+.Nm
+.Cm start
+.Ar ALIAS
+.Op Ar LLAMA_SERVER_ARGS ...
+.Nm
+.Cm stop
+.Brq Ar ALIAS | Fl -all
+.Nm
+.Cm restart
+.Brq Ar ALIAS | Fl -all
+.Op Ar LLAMA_SERVER_ARGS ...
+.Nm
+.Cm logs
+.Ar ALIAS
+.Op Fl f | Fl -follow
+.Op Fl n Ar LINES
+.Nm
+.Cm status
+.Op Fl -running
+.Op Ar ALIAS
+.Nm
+.Op Fl v | Fl -version
+.Sh DESCRIPTION
+.Nm
+is a POSIX
+.Xr sh 1
+wrapper around llama.cpp's
+.Xr llama-server 1 .
+It gives local GGUF model files short, stable aliases and assembles the
+right
+.Xr llama-server 1
+invocation \(em model path, mmproj path, and layered argument files \(em
+for each alias.
+.Pp
+Each alias lives under
+.Ev LLAMA_MODEL_ROOT Ns Pa /ALIAS
+as a directory containing a symbolic link
+.Pa model.gguf
+(and, for a vision model, a second link
+.Pa mmproj.gguf )
+pointing at the real, long-named downloaded file.
+.Nm
+never copies model data; it only manages links and small per-alias metadata
+files.
+.Pp
+Anywhere
+.Ar ALIAS
+is accepted, a plain number is also accepted as the 1-based index shown by
+.Cm list
+or
+.Cm status .
+That index is positional and can shift as aliases are added or removed.
+.Sh COMMANDS
+.Bl -tag -width Ds
+.It Cm list
+List every alias in the catalog, one per line, prefixed with its 1-based
+index.
+.It Cm show Ar ALIAS
+Print the alias's resolved model path, mmproj path (or
+.Dq (none) ) ,
+and the path to its per-model
+.Pa server.args
+file, if any.
+.It Cm add Ar ALIAS MODEL_GGUF Op Ar MMPROJ_GGUF
+Create
+.Ev LLAMA_MODEL_ROOT Ns Pa /ALIAS
+and symlink
+.Ar MODEL_GGUF
+to
+.Pa model.gguf
+inside it (and
+.Ar MMPROJ_GGUF ,
+if given, to
+.Pa mmproj.gguf ) .
+.Ar MODEL_GGUF
+and
+.Ar MMPROJ_GGUF
+are resolved to their canonical path before linking.
+A
+.Fl -port
+line is written to the new alias's
+.Pa server.args ,
+one past the highest
+.Fl -port
+already in use across the global args file and every other alias, so newly
+added models do not collide on the default port.
+.It Cm remove Ar ALIAS Op Fl -force
+Delete
+.Ar ALIAS Ns 's
+catalog directory, i.e. its
+.Pa model.gguf
+and
+.Pa mmproj.gguf
+links and
+.Pa server.args ,
+not the underlying downloaded files.
+Refuses while the alias is running
+unless
+.Fl -force
+is given, in which case it is stopped first.
+.It Cm run Ar ALIAS Op Ar LLAMA_SERVER_ARGS ...
+Assemble the argument list for
+.Ar ALIAS
+and
+.Xr exec 3
+.Ev LLAMA_SERVER
+in place of the wrapper, so signals and exit status pass through correctly
+under
+.Xr daemon 8 ,
+.Pa rc.d ,
+or a terminal multiplexer.
+Runs in the foreground.
+.It Cm command Ar ALIAS Op Ar LLAMA_SERVER_ARGS ...
+Build the identical argument list as
+.Cm run
+but print the shell-quoted, ready-to-paste
+.Ev LLAMA_SERVER
+invocation instead of executing it.
+Useful for inspecting what would run, or for copying into another
+supervisor.
+.It Cm start Ar ALIAS Op Ar LLAMA_SERVER_ARGS ...
+Run
+.Ar ALIAS
+detached in the background, redirecting stdout and stderr to
+.Ar ALIAS Ns Pa /server.log
+and recording its process ID in
+.Ar ALIAS Ns Pa /server.pid
+and its host:port in
+.Ar ALIAS Ns Pa /server.addr .
+Fails if the alias is already running.
+.It Cm stop Brq Ar ALIAS | Fl -all
+Send
+.Dv SIGTERM
+to the running alias's process and wait for it to exit, removing the
+.Pa server.pid
+and
+.Pa server.addr
+files.
+With
+.Fl -all
+in place of
+.Ar ALIAS ,
+stops every alias currently reported as running.
+.It Cm restart Brq Ar ALIAS | Fl -all Op Ar LLAMA_SERVER_ARGS ...
+Stop the alias if it is running, then start it again with the given
+arguments.
+With
+.Fl -all ,
+restarts every alias currently reported as running.
+.It Cm logs Ar ALIAS Op Fl f | Fl -follow Op Fl n Ar LINES
+Print the last
+.Ar LINES
+lines (default 50) of
+.Ar ALIAS Ns Pa /server.log .
+.Fl f
+or
+.Fl -follow
+follows the file like
+.Xr tail 1 Ns 's
+.Fl f
+flag.
+.It Cm status Op Fl -running Op Ar ALIAS
+Print a table of alias, run state, process ID, and address.
+With no
+.Ar ALIAS ,
+lists every alias; with
+.Ar ALIAS ,
+shows only that one.
+.Fl -running
+restricts the listing to running aliases and may not be combined with an
+.Ar ALIAS
+argument.
+.It Fl v , Fl -version
+Print the
+.Nm
+version and exit.
+.It Fl h , Fl -help
+Print a usage summary and exit.
+.El
+.Sh CONFIGURATION
+Configuration is layered and sourced as shell code, not parsed:
+.Bl -enum
+.It
+.Pa $XDG_CONFIG_HOME/llama-models.conf
+(or
+.Pa ~/.config/llama-models.conf
+if
+.Ev XDG_CONFIG_HOME
+is unset), or the file named by
+.Ev LLAMA_MODELS_CONFIG ,
+is dot-sourced if present.
+It may set
+.Ev LLAMA_SERVER ,
+.Ev LLAMA_MODEL_ROOT ,
+and
+.Ev LLAMA_GLOBAL_ARGS .
+.It
+Any of those left unset fall back to hardcoded defaults; see
+.Sx ENVIRONMENT .
+.El
+.Pp
+Environment variables already set before invoking
+.Nm
+take precedence over the config file, since the file assigns with
+.Ev VAR Ns = Ns \&${ Ns Ev VAR Ns :- Ns Ar default Ns } .
+.Sh ARGUMENT FILES
+.Ev LLAMA_GLOBAL_ARGS
+(default
+.Ev LLAMA_MODEL_ROOT Ns Pa /server.args )
+and each alias's
+.Ar ALIAS Ns Pa /server.args
+list
+.Xr llama-server 1
+arguments, one per line: an option and its value are two separate lines.
+Blank lines and lines starting with
+.Sq #
+are ignored.
+One argument per line is what lets an argument's value contain spaces.
+.Pp
+.Cm run
+and
+.Cm command
+assemble arguments in this precedence order, later winning, since
+.Xr llama-server 1
+uses last-flag-wins semantics and each source is appended after the
+previous:
+.Bl -enum
+.It
+.Ev LLAMA_GLOBAL_ARGS
+\(em options for every model.
+.It
+.Ar ALIAS Ns Pa /server.args
+\(em per-model overrides.
+.It
+Extra arguments passed on the command line after
+.Ar ALIAS
+\(em highest precedence.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width "LLAMA_MODELS_CONFIG"
+.It Ev LLAMA_SERVER
+Path to the
+.Xr llama-server 1
+executable.
+Default:
+.Pa ~/src/github/ggml-org/llama.cpp/build/bin/llama-server .
+.It Ev LLAMA_MODEL_ROOT
+Path to the catalog directory.
+Default:
+.Pa ~/models/catalog .
+.It Ev LLAMA_GLOBAL_ARGS
+Path to the global arguments file.
+Default:
+.Ev LLAMA_MODEL_ROOT Ns Pa /server.args .
+.It Ev LLAMA_MODELS_CONFIG
+Path to the configuration file to source.
+Default:
+.Pa $XDG_CONFIG_HOME/llama-models.conf
+or
+.Pa ~/.config/llama-models.conf .
+.El
+.Sh FILES
+.Bl -tag -width "ALIAS/server.addr" -compact
+.It Pa ~/.config/llama-models.conf
+Default configuration file.
+.It Ev LLAMA_MODEL_ROOT Ns Pa /server.args
+Default global arguments file.
+.It Ar ALIAS Ns Pa /model.gguf
+Symlink to the model file for
+.Ar ALIAS .
+.It Ar ALIAS Ns Pa /mmproj.gguf
+Symlink to the multimodal projector file for
+.Ar ALIAS ,
+if any.
+.It Ar ALIAS Ns Pa /server.args
+Per-model argument overrides for
+.Ar ALIAS .
+.It Ar ALIAS Ns Pa /server.pid
+Process ID of a running
+.Ar ALIAS ,
+written by
+.Cm start
+and removed by
+.Cm stop .
+.It Ar ALIAS Ns Pa /server.addr
+Host and port of a running
+.Ar ALIAS .
+.It Ar ALIAS Ns Pa /server.log
+Combined stdout/stderr log of a background
+.Ar ALIAS .
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Nm
+exits 2 if invoked with no command, and 1 on any other usage error or
+operational failure (unknown alias, invalid alias name, alias already or
+not running, etc.).
+.Sh EXAMPLES
+Add a text-only model and a vision-language model, then inspect and run one:
+.Bd -literal -offset indent
+llama-model add llama8 ~/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf
+llama-model add qwen-vl \e
+    ~/models/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf \e
+    ~/models/mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf
+
+llama-model list
+llama-model show qwen-vl
+llama-model command qwen-vl
+llama-model run qwen-vl
+.Ed
+.Pp
+Override an argument for one invocation; overrides passed on the command
+line win over both argument files:
+.Bd -literal -offset indent
+llama-model run llama8 --port 8081 --ctx-size 16384
+.Ed
+.Pp
+Run a model as a background service and inspect it later:
+.Bd -literal -offset indent
+llama-model start llama8
+llama-model status
+llama-model logs llama8 -f
+llama-model stop llama8
+.Ed
+.Pp
+Swap a model's underlying quantization by repointing its symlink, then
+verify before starting it:
+.Bd -literal -offset indent
+ln -sfn ~/models/new-long-model-name.gguf \e
+    ~/models/catalog/llama8/model.gguf
+llama-model show llama8
+.Ed
+.Sh SEE ALSO
+.Xr sh 1 ,
+.Xr daemon 8
+.Sh AUTHORS
+.An Dennis R. Friedrichsen

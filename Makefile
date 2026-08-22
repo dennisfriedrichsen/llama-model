@@ -1,16 +1,21 @@
 PREFIX ?= $(HOME)
 BINDIR = $(PREFIX)/bin
+MANDIR = $(PREFIX)/man/man1
 CONFDIR = $(HOME)/.config
 CATALOG = $(HOME)/models/catalog
 
-.PHONY: install install-bin install-config uninstall check
+.PHONY: install install-bin install-man install-config uninstall check
 
-install: install-bin install-config
+install: install-bin install-man install-config
 
 install-bin:
 	install -d $(BINDIR)
 	ver=$$(cat VERSION); sed "s/^VERSION=dev\$$/VERSION=$$ver/" llama-model > $(BINDIR)/llama-model
 	chmod 0755 $(BINDIR)/llama-model
+
+install-man:
+	install -d $(MANDIR)
+	install -m 0644 llama-model.1 $(MANDIR)/llama-model.1
 
 install-config:
 	install -d $(CONFDIR) $(CATALOG)
@@ -18,8 +23,9 @@ install-config:
 	[ -f $(CATALOG)/server.args ] || install -m 0644 server.args.example $(CATALOG)/server.args
 
 uninstall:
-	rm -f $(BINDIR)/llama-model
+	rm -f $(BINDIR)/llama-model $(MANDIR)/llama-model.1
 
 check:
 	sh -n llama-model
 	command -v shellcheck >/dev/null 2>&1 && shellcheck llama-model || true
+	command -v mandoc >/dev/null 2>&1 && mandoc -Tlint llama-model.1 || true
