@@ -34,11 +34,10 @@ can retain its descriptive download name while commands use a memorable alias.
 make install
 ```
 
-By default this installs per-user, to `~/.local/bin` and `~/.local/man/man1`
-(add `~/.local/bin` to `PATH` if it is not already there). Run it as root (or
-via `sudo`) and it installs system-wide to `/usr/local/bin` and
-`/usr/local/man/man1` instead. Either default can be overridden with
-`PREFIX=...`.
+By default this installs per-user, to `~/bin` and `~/man/man1` (add `~/bin`
+to `PATH` if it is not already there). Run it as root (or via `sudo`) and it
+installs system-wide to `/usr/local/bin` and `/usr/local/man/man1` instead.
+Either default can be overridden with `PREFIX=...`.
 
 `make install` also drops the example config files into
 `~/.config/llama-models.conf` and `~/models/catalog/server.args` only if
