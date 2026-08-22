@@ -1,9 +1,4 @@
-# Root (or sudo) installs system-wide to /usr/local by default; everyone
-# else installs per-user to ~/.local. Pass PREFIX=... explicitly to override
-# either default.
-.if !defined(PREFIX)
-PREFIX != if [ "`id -u`" = 0 ]; then echo /usr/local; else echo ${HOME}/.local; fi
-.endif
+PREFIX ?= $(HOME)
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/man/man1
 CONFDIR = $(HOME)/.config

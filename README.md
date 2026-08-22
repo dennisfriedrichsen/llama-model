@@ -30,22 +30,18 @@ can retain its descriptive download name while commands use a memorable alias.
 
 ## Install
 
+Install it for your user (add `~/bin` to `PATH` if it is not already there):
+
 ```sh
 make install
 ```
 
-By default this installs per-user, to `~/.local/bin` and `~/.local/man/man1`
-(add `~/.local/bin` to `PATH` if it is not already there). Run it as root (or
-via `sudo`) and it installs system-wide to `/usr/local/bin` and
-`/usr/local/man/man1` instead. Either default can be overridden with
-`PREFIX=...`.
-
-`make install` also drops the example config files into
+This installs `llama-model` to `~/bin` and its man page to `~/man/man1`
+(override both with `PREFIX=...`), and drops the example config files into
 `~/.config/llama-models.conf` and `~/models/catalog/server.args` only if
 those files don't already exist, so re-running `make install` to pick up
 script updates never clobbers your edited config. Run `make uninstall` to
-remove the installed script and man page (pass the same `PREFIX=...` you
-installed with, if any).
+remove the installed script and man page.
 
 Once installed, run `man llama-model` for full command and configuration
 reference.
