@@ -36,11 +36,15 @@ Install it for your user (add `~/bin` to `PATH` if it is not already there):
 make install
 ```
 
-This installs `llama-model` to `~/bin` (override with `PREFIX=...`), and drops
-the example config files into `~/.config/llama-models.conf` and
-`~/models/catalog/server.args` only if those files don't already exist, so
-re-running `make install` to pick up script updates never clobbers your
-edited config. Run `make uninstall` to remove the installed script.
+This installs `llama-model` to `~/bin` and its man page to `~/man/man1`
+(override both with `PREFIX=...`), and drops the example config files into
+`~/.config/llama-models.conf` and `~/models/catalog/server.args` only if
+those files don't already exist, so re-running `make install` to pick up
+script updates never clobbers your edited config. Run `make uninstall` to
+remove the installed script and man page.
+
+Once installed, run `man llama-model` for full command and configuration
+reference.
 
 Edit the two installed configuration files for your binary, storage, host,
 port, context size, and hardware. Each `server.args` line is exactly one
