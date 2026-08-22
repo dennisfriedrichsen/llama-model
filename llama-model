@@ -183,7 +183,12 @@ status_row() {
         state=running
         pid=$(cat "$pid_file")
         addr=-
-        [ ! -f "$addr_file" ] || addr="http://$(cat "$addr_file")"
+        port=-
+        if [ -f "$addr_file" ]; then
+            addr_content=$(cat "$addr_file")
+            addr="http://$addr_content"
+            port=${addr_content##*:}
+        fi
     else
         # A pid file that didn't pass pid_is_running is stale (the process
         # died without going through 'stop'); reap it so status doesn't
@@ -192,8 +197,9 @@ status_row() {
         state=stopped
         pid=-
         addr=-
+        port=-
     fi
-    printf '%s\t%s\t%s\t%s\t%s\n' "$idx" "$alias_name" "$state" "$pid" "$addr"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$idx" "$alias_name" "$state" "$pid" "$port" "$addr"
 }
 
 render_table() {
@@ -543,7 +549,7 @@ case $cmd in
             check_alias "$alias_name"
             idx=$(alias_index "$alias_name")
             {
-                printf 'ID\tALIAS\tSTATE\tPID\tADDRESS\n'
+                printf 'ID\tALIAS\tSTATE\tPID\tPORT\tADDRESS\n'
                 status_row "$alias_name" "$idx"
             } | render_table
         else
@@ -561,7 +567,7 @@ case $cmd in
                 printf 'No running models.\n'
             else
                 {
-                    printf 'ID\tALIAS\tSTATE\tPID\tADDRESS\n'
+                    printf 'ID\tALIAS\tSTATE\tPID\tPORT\tADDRESS\n'
                     [ -z "$rows" ] || printf '%s\n' "$rows"
                 } | render_table
             fi
