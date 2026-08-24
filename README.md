@@ -30,7 +30,7 @@ can retain its descriptive download name while commands use a memorable alias.
 - **`llama-server`** is resolved through `PATH`, like any other command — on
   FreeBSD that's normally `/usr/local/bin/llama-server`, installed by the
   `misc/llama-cpp` package or port. Set `LLAMA_SERVER` (env var or in
-  `llama-models.conf`) to an explicit path to pin a specific build instead.
+  `llama-model.conf`) to an explicit path to pin a specific build instead.
 - **The model catalog** defaults to the fixed system path
   `/var/db/llama-model/catalog` — it does not depend on `$HOME`. Set
   `LLAMA_MODEL_ROOT` to use a different directory (e.g. a personal catalog).
@@ -55,7 +55,7 @@ to a build path under `$HOME`. Neither default depends on `$HOME` anymore,
 but nothing is moved automatically:
 
 - To keep using your existing per-user catalog unchanged, set
-  `LLAMA_MODEL_ROOT=~/models/catalog` in `~/.config/llama-models.conf` (or
+  `LLAMA_MODEL_ROOT=~/models/catalog` in `~/.config/llama-model.conf` (or
   the environment).
 - To adopt the new system catalog, create it and copy your aliases in
   (`cp -R` preserves the symlinks; the underlying downloaded files are
@@ -78,7 +78,7 @@ make install
 This installs `llama-model` to `~/bin` and its man page to `~/man/man1` when
 run as your user, or to `/usr/local/bin` and `/usr/local/man/man1` when run
 as root (override either with `PREFIX=...`). It also drops example config
-files — `llama-models.conf` (pointed at a catalog under
+files — `llama-model.conf` (pointed at a catalog under
 `~/.local/share/llama-model/catalog` for a per-user install, or
 `/var/db/llama-model/catalog` for a root install; override with
 `CATALOG=...`) and that catalog's `server.args` — only if those files don't
