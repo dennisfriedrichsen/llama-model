@@ -7,7 +7,7 @@ set -eu
 VERSION=dev
 
 CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
-CONFIG_FILE=${LLAMA_MODELS_CONFIG:-$CONFIG_HOME/llama-models.conf}
+CONFIG_FILE=${LLAMA_MODEL_CONFIG:-$CONFIG_HOME/llama-model.conf}
 
 if [ -r "$CONFIG_FILE" ]; then
     # This is a user-owned shell configuration file.

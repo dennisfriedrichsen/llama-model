@@ -95,8 +95,8 @@ make_dummy_gguf() {
 # what the test explicitly adds, and a decoy \$HOME so any accidental
 # HOME-dependence shows up.
 base_env() {
-    LLAMA_MODELS_CONFIG=/dev/null
-    export LLAMA_MODELS_CONFIG
+    LLAMA_MODEL_CONFIG=/dev/null
+    export LLAMA_MODEL_CONFIG
     unset LLAMA_SERVER LLAMA_MODEL_ROOT LLAMA_GLOBAL_ARGS 2>/dev/null || true
 }
 

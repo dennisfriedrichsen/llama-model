@@ -41,7 +41,7 @@ Everything lives in one script, organized as: config loading → helper function
 (`list`, `show`, `add`, `run`, `command`).
 
 **Configuration is layered and sourced from shell files, not parsed:**
-1. `~/.config/llama-models.conf` (or `$LLAMA_MODELS_CONFIG`) is `.`-sourced if present, and may set
+1. `~/.config/llama-model.conf` (or `$LLAMA_MODEL_CONFIG`) is `.`-sourced if present, and may set
    `LLAMA_SERVER`, `LLAMA_MODEL_ROOT`, `LLAMA_GLOBAL_ARGS`.
 2. Anything unset falls back to hardcoded defaults: `LLAMA_SERVER` defaults to the bare name
    `llama-server`, resolved through `PATH` (never a build path under `$HOME`); `LLAMA_MODEL_ROOT`

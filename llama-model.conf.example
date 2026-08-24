@@ -1,4 +1,4 @@
-# Copy to ~/.config/llama-models.conf. These are already the wrapper defaults,
+# Copy to ~/.config/llama-model.conf. These are already the wrapper defaults,
 # but keeping them here makes future path changes obvious.
 #
 # Each uses ${VAR:-default} so an environment variable already set before

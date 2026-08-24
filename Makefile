@@ -31,9 +31,9 @@ install-man:
 
 install-config:
 	install -d $(CONFDIR)
-	[ -f $(CONFDIR)/llama-models.conf ] || { \
-		sed "s|/var/db/llama-model/catalog|$(CATALOG)|" llama-models.conf.example > $(CONFDIR)/llama-models.conf; \
-		chmod 0644 $(CONFDIR)/llama-models.conf; \
+	[ -f $(CONFDIR)/llama-model.conf ] || { \
+		sed "s|/var/db/llama-model/catalog|$(CATALOG)|" llama-model.conf.example > $(CONFDIR)/llama-model.conf; \
+		chmod 0644 $(CONFDIR)/llama-model.conf; \
 	}
 	install -d $(CATALOG)
 	[ -f $(CATALOG)/server.args ] || install -m 0644 server.args.example $(CATALOG)/server.args

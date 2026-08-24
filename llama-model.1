@@ -209,13 +209,13 @@ Print a usage summary and exit.
 Configuration is layered and sourced as shell code, not parsed:
 .Bl -enum
 .It
-.Pa $XDG_CONFIG_HOME/llama-models.conf
+.Pa $XDG_CONFIG_HOME/llama-model.conf
 (or
-.Pa ~/.config/llama-models.conf
+.Pa ~/.config/llama-model.conf
 if
 .Ev XDG_CONFIG_HOME
 is unset), or the file named by
-.Ev LLAMA_MODELS_CONFIG ,
+.Ev LLAMA_MODEL_CONFIG ,
 is dot-sourced if present.
 It may set
 .Ev LLAMA_SERVER ,
@@ -265,7 +265,7 @@ Extra arguments passed on the command line after
 \(em highest precedence.
 .El
 .Sh ENVIRONMENT
-.Bl -tag -width "LLAMA_MODELS_CONFIG"
+.Bl -tag -width "LLAMA_MODEL_CONFIG"
 .It Ev LLAMA_SERVER
 Path to the
 .Xr llama-server 1
@@ -305,16 +305,16 @@ install -d -o SERVICE_USER /var/db/llama-model/catalog
 Path to the global arguments file.
 Default:
 .Ev LLAMA_MODEL_ROOT Ns Pa /server.args .
-.It Ev LLAMA_MODELS_CONFIG
+.It Ev LLAMA_MODEL_CONFIG
 Path to the configuration file to source.
 Default:
-.Pa $XDG_CONFIG_HOME/llama-models.conf
+.Pa $XDG_CONFIG_HOME/llama-model.conf
 or
-.Pa ~/.config/llama-models.conf .
+.Pa ~/.config/llama-model.conf .
 .El
 .Sh FILES
 .Bl -tag -width "ALIAS/server.addr" -compact
-.It Pa ~/.config/llama-models.conf
+.It Pa ~/.config/llama-model.conf
 Default configuration file.
 .It Ev LLAMA_MODEL_ROOT Ns Pa /server.args
 Default global arguments file.
@@ -398,7 +398,7 @@ anymore.
 An existing per-user catalog keeps working unchanged if you set
 .Ev LLAMA_MODEL_ROOT
 to its old path, either in
-.Pa ~/.config/llama-models.conf
+.Pa ~/.config/llama-model.conf
 or the environment; nothing is moved, copied, or deleted automatically.
 To adopt the new system catalog instead, create it and copy the old one's
 aliases into it:
