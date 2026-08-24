@@ -14,8 +14,14 @@ if [ -r "$CONFIG_FILE" ]; then
     . "$CONFIG_FILE"
 fi
 
-LLAMA_SERVER=${LLAMA_SERVER:-$HOME/src/github/ggml-org/llama.cpp/build/bin/llama-server}
-LLAMA_MODEL_ROOT=${LLAMA_MODEL_ROOT:-$HOME/models/catalog}
+# Sole place a system path is hardcoded, so the platform default for the
+# catalog root is never scattered through the rest of the script.
+DEFAULT_MODEL_ROOT=/var/db/llama-model/catalog
+
+# Bare name so it resolves through PATH (e.g. /usr/local/bin/llama-server
+# from FreeBSD's misc/llama-cpp package), never a build path under $HOME.
+LLAMA_SERVER=${LLAMA_SERVER:-llama-server}
+LLAMA_MODEL_ROOT=${LLAMA_MODEL_ROOT:-$DEFAULT_MODEL_ROOT}
 LLAMA_GLOBAL_ARGS=${LLAMA_GLOBAL_ARGS:-$LLAMA_MODEL_ROOT/server.args}
 
 usage() {
@@ -72,6 +78,22 @@ check_alias() {
     case $1 in
         ''|*[!A-Za-z0-9._-]*)
             die "invalid alias '$1' (use letters, digits, dot, underscore, or dash)"
+            ;;
+    esac
+}
+
+resolve_llama_server() {
+    # LLAMA_SERVER is either an explicit path (contains a slash) or a bare
+    # name meant to be found on PATH; verify it's actually runnable before
+    # a caller tries to exec it, with an actionable message either way.
+    case $LLAMA_SERVER in
+        */*)
+            [ -x "$LLAMA_SERVER" ] ||
+                die "llama-server is not executable: $LLAMA_SERVER (install llama.cpp's llama-server there, or fix the LLAMA_SERVER path)"
+            ;;
+        *)
+            command -v "$LLAMA_SERVER" >/dev/null 2>&1 ||
+                die "llama-server not found on PATH (looked for '$LLAMA_SERVER'); install it (on FreeBSD: pkg install llama-cpp, or build/install the misc/llama-cpp port) or set LLAMA_SERVER to its full path"
             ;;
     esac
 }
@@ -317,7 +339,7 @@ do_start() {
     set +f
     IFS=$old_ifs
 
-    [ -x "$LLAMA_SERVER" ] || die "llama-server is not executable: $LLAMA_SERVER"
+    resolve_llama_server
 
     host=$(last_flag_value --host "$@")
     port=$(last_flag_value --port "$@")
@@ -389,7 +411,8 @@ case $cmd in
         model=$(resolve_file "$3")
         projector=
         [ "$#" -eq 3 ] || projector=$(resolve_file "$4")
-        mkdir -p "$directory"
+        mkdir -p "$directory" 2>/dev/null ||
+            die "cannot create '$directory': check that '$LLAMA_MODEL_ROOT' exists and this user has write access to it (e.g. 'install -d -o \$(id -un) \"$LLAMA_MODEL_ROOT\"' as root)"
         ln -s "$model" "$directory/model.gguf"
         if [ -n "$projector" ]; then
             ln -s "$projector" "$directory/mmproj.gguf"
@@ -445,7 +468,7 @@ case $cmd in
             exit 0
         fi
 
-        [ -x "$LLAMA_SERVER" ] || die "llama-server is not executable: $LLAMA_SERVER"
+        resolve_llama_server
         exec "$LLAMA_SERVER" "$@"
         ;;
 

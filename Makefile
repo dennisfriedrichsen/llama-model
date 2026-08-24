@@ -7,7 +7,14 @@ PREFIX != if [ "`id -u`" = 0 ]; then echo /usr/local; else echo ${HOME}; fi
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/man/man1
 CONFDIR = $(HOME)/.config
-CATALOG = $(HOME)/models/catalog
+
+# Root installs share llama-model's own system default
+# (/var/db/llama-model/catalog); everyone else gets a per-user catalog under
+# their XDG data directory, since /var/db is typically not user-writable.
+# Pass CATALOG=... explicitly to override either default.
+.if !defined(CATALOG)
+CATALOG != if [ "`id -u`" = 0 ]; then echo /var/db/llama-model/catalog; else echo $(HOME)/.local/share/llama-model/catalog; fi
+.endif
 
 .PHONY: install install-bin install-man install-config uninstall check
 
@@ -23,8 +30,12 @@ install-man:
 	install -m 0644 llama-model.1 $(MANDIR)/llama-model.1
 
 install-config:
-	install -d $(CONFDIR) $(CATALOG)
-	[ -f $(CONFDIR)/llama-models.conf ] || install -m 0644 llama-models.conf.example $(CONFDIR)/llama-models.conf
+	install -d $(CONFDIR)
+	[ -f $(CONFDIR)/llama-models.conf ] || { \
+		sed "s|/var/db/llama-model/catalog|$(CATALOG)|" llama-models.conf.example > $(CONFDIR)/llama-models.conf; \
+		chmod 0644 $(CONFDIR)/llama-models.conf; \
+	}
+	install -d $(CATALOG)
 	[ -f $(CATALOG)/server.args ] || install -m 0644 server.args.example $(CATALOG)/server.args
 
 uninstall:
@@ -34,3 +45,4 @@ check:
 	sh -n llama-model
 	command -v shellcheck >/dev/null 2>&1 && shellcheck llama-model || true
 	command -v mandoc >/dev/null 2>&1 && mandoc -Tlint llama-model.1 || true
+	sh tests/run.sh
