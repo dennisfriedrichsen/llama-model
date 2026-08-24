@@ -6,15 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A single POSIX `sh` script (`llama-model`) that wraps `llama.cpp`'s `llama-server`. It gives
 local GGUF model files short, stable aliases and assembles the right `llama-server` invocation
-(model path, mmproj path, and layered argument files) for each alias. There is no build step,
-package manifest, or test suite — the entire implementation is the `llama-model` file itself.
+(model path, mmproj path, and layered argument files) for each alias. There is no build step
+or package manifest — the entire implementation is the `llama-model` file itself. A small
+POSIX-sh test script lives at `tests/run.sh` (see below).
 
 Written in strict POSIX shell (no bashisms) because it targets FreeBSD, where `/bin/sh` is not
 bash. Do not introduce bash-only syntax (`[[ ]]`, arrays, `local`, `source`, process substitution).
 
 ## Running / trying changes
 
-There's no test suite, so validate changes by exercising the script directly:
+Run the test suite (`sh tests/run.sh`, also wired into `make check`) and validate changes by
+exercising the script directly:
 
 ```sh
 # Sanity-check syntax (POSIX sh, not bash)
@@ -41,8 +43,12 @@ Everything lives in one script, organized as: config loading → helper function
 **Configuration is layered and sourced from shell files, not parsed:**
 1. `~/.config/llama-models.conf` (or `$LLAMA_MODELS_CONFIG`) is `.`-sourced if present, and may set
    `LLAMA_SERVER`, `LLAMA_MODEL_ROOT`, `LLAMA_GLOBAL_ARGS`.
-2. Anything unset falls back to hardcoded defaults (`~/src/github/ggml-org/llama.cpp/build/bin/llama-server`,
-   `~/models/catalog`).
+2. Anything unset falls back to hardcoded defaults: `LLAMA_SERVER` defaults to the bare name
+   `llama-server`, resolved through `PATH` (never a build path under `$HOME`); `LLAMA_MODEL_ROOT`
+   defaults to the fixed system path `/var/db/llama-model/catalog` (via the `DEFAULT_MODEL_ROOT`
+   constant near the top of the script), independent of `$HOME`. `resolve_llama_server` validates
+   whichever `LLAMA_SERVER` value is in effect (a `command -v` lookup for a bare name, `-x` for an
+   explicit path) before `run`/`start` try to exec it, with an actionable error either way.
 
 **The catalog (`$LLAMA_MODEL_ROOT`) is the on-disk data model**, not a database or JSON file:
 - Each alias is a directory `$LLAMA_MODEL_ROOT/ALIAS/` containing a symlink `model.gguf` (and

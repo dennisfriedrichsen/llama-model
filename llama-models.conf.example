@@ -5,8 +5,13 @@
 # invoking llama-model (e.g. LLAMA_MODEL_ROOT=/tmp/x llama-model ...) takes
 # precedence over this file, instead of this file silently overriding it.
 
-LLAMA_SERVER=${LLAMA_SERVER:-"$HOME/src/github/ggml-org/llama.cpp/build/bin/llama-server"}
-LLAMA_MODEL_ROOT=${LLAMA_MODEL_ROOT:-"$HOME/models/catalog"}
+# LLAMA_SERVER defaults to the bare name "llama-server", resolved through
+# PATH (on FreeBSD, that's normally /usr/local/bin/llama-server from the
+# misc/llama-cpp package or port). Only set this if llama-server isn't on
+# PATH, or you want to pin a specific build.
+# LLAMA_SERVER=${LLAMA_SERVER:-"/usr/local/bin/llama-server"}
+
+LLAMA_MODEL_ROOT=${LLAMA_MODEL_ROOT:-"/var/db/llama-model/catalog"}
 
 # Optional. Defaults to $LLAMA_MODEL_ROOT/server.args.
 # LLAMA_GLOBAL_ARGS=${LLAMA_GLOBAL_ARGS:-"$HOME/.config/llama-server.args"}

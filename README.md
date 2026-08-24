@@ -7,26 +7,64 @@ automatically, using POSIX shell without FreeBSD-specific shell features.
 ## Recommended layout
 
 Keep the downloaded files wherever you store large model data. The wrapper
-creates this short, stable catalog with symbolic links:
+creates this short, stable catalog with symbolic links, rooted by default at
+`/var/db/llama-model/catalog` (see [Defaults](#defaults) below):
 
 ```text
-~/models/
-├── Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf
-├── Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf
-├── mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf
-└── catalog/
-    ├── server.args
-    ├── llama-3.1-8b/
-    │   └── model.gguf -> ../../Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf
-    └── qwen-vl/
-        ├── model.gguf  -> ../../Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf
-        ├── mmproj.gguf -> ../../mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf
-        └── server.args
+/var/db/llama-model/catalog/
+├── server.args
+├── llama-3.1-8b/
+│   └── model.gguf -> /path/to/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf
+└── qwen-vl/
+    ├── model.gguf  -> /path/to/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf
+    ├── mmproj.gguf -> /path/to/mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf
+    └── server.args
 ```
 
 This follows llama.cpp's convention of grouping a multimodal model and a file
 whose name starts with `mmproj` in the same directory. The links mean a model
 can retain its descriptive download name while commands use a memorable alias.
+
+## Defaults
+
+- **`llama-server`** is resolved through `PATH`, like any other command — on
+  FreeBSD that's normally `/usr/local/bin/llama-server`, installed by the
+  `misc/llama-cpp` package or port. Set `LLAMA_SERVER` (env var or in
+  `llama-models.conf`) to an explicit path to pin a specific build instead.
+- **The model catalog** defaults to the fixed system path
+  `/var/db/llama-model/catalog` — it does not depend on `$HOME`. Set
+  `LLAMA_MODEL_ROOT` to use a different directory (e.g. a personal catalog).
+  `llama-model add` creates the directory (and its parents) the first time
+  it's needed; read-only commands (`list`, `show`, `status`) never create it.
+
+A system administrator typically needs to create `/var/db/llama-model` once
+and grant the account that runs `llama-model` write access to it, e.g.:
+
+```sh
+install -d -o SERVICE_USER /var/db/llama-model/catalog
+```
+
+`llama-model` never runs `sudo` or changes ownership itself; if it can't
+write to the configured catalog directory it reports that directory's path
+in the error so you know what to fix.
+
+### Migrating from `~/models/catalog`
+
+Older versions defaulted the catalog to `~/models/catalog` and `llama-server`
+to a build path under `$HOME`. Neither default depends on `$HOME` anymore,
+but nothing is moved automatically:
+
+- To keep using your existing per-user catalog unchanged, set
+  `LLAMA_MODEL_ROOT=~/models/catalog` in `~/.config/llama-models.conf` (or
+  the environment).
+- To adopt the new system catalog, create it and copy your aliases in
+  (`cp -R` preserves the symlinks; the underlying downloaded files are
+  untouched either way):
+
+  ```sh
+  install -d -o SERVICE_USER /var/db/llama-model/catalog
+  cp -R ~/models/catalog/. /var/db/llama-model/catalog/
+  ```
 
 ## Install
 
@@ -39,12 +77,14 @@ make install
 
 This installs `llama-model` to `~/bin` and its man page to `~/man/man1` when
 run as your user, or to `/usr/local/bin` and `/usr/local/man/man1` when run
-as root (override either with `PREFIX=...`), and drops the example config
-files into `~/.config/llama-models.conf` and `~/models/catalog/server.args`
-only if those files don't already exist, so re-running `make install` to
-pick up script updates never clobbers your edited config. Run
-`make uninstall` to remove the installed script and man page (pass the same
-`PREFIX=...` you installed with, if any).
+as root (override either with `PREFIX=...`). It also drops example config
+files — `llama-models.conf` (pointed at a catalog under
+`~/.local/share/llama-model/catalog` for a per-user install, or
+`/var/db/llama-model/catalog` for a root install; override with
+`CATALOG=...`) and that catalog's `server.args` — only if those files don't
+already exist, so re-running `make install` to pick up script updates never
+clobbers your edited config. Run `make uninstall` to remove the installed
+script and man page (pass the same `PREFIX=...` you installed with, if any).
 
 Once installed, run `man llama-model` for full command and configuration
 reference.
@@ -78,7 +118,8 @@ so they are useful for an occasional override:
 llama-model run llama8 --port 8081 --ctx-size 16384
 ```
 
-Put model-specific settings in `~/models/catalog/ALIAS/server.args`.
+Put model-specific settings in `$LLAMA_MODEL_ROOT/ALIAS/server.args`
+(`/var/db/llama-model/catalog/ALIAS/server.args` by default).
 For example, a model that needs flash attention disabled could contain:
 
 ```text
@@ -97,7 +138,7 @@ revision, atomically replace the appropriate link:
 
 ```sh
 ln -sfn "$HOME/models/new-long-model-name.gguf" \
-  "$HOME/models/catalog/llama8/model.gguf"
+  /var/db/llama-model/catalog/llama8/model.gguf
 ```
 
 Run `llama-model show llama8` afterward to verify the target before starting it.

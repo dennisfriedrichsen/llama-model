@@ -269,13 +269,38 @@ Extra arguments passed on the command line after
 .It Ev LLAMA_SERVER
 Path to the
 .Xr llama-server 1
-executable.
+executable, or a bare name to resolve via
+.Ev PATH .
 Default:
-.Pa ~/src/github/ggml-org/llama.cpp/build/bin/llama-server .
+.Pa llama-server ,
+resolved via
+.Ev PATH
+(on FreeBSD, normally
+.Pa /usr/local/bin/llama-server
+from the
+.Pa misc/llama-cpp
+package or port).
+Set an explicit path here to pin a specific build instead of relying on
+.Ev PATH .
 .It Ev LLAMA_MODEL_ROOT
 Path to the catalog directory.
 Default:
-.Pa ~/models/catalog .
+.Pa /var/db/llama-model/catalog .
+This is a fixed system path and does not depend on
+.Ev HOME .
+Created on first
+.Cm add
+if missing; read-only commands
+.Pq Cm list , Cm show , Cm status
+do not create it.
+A system administrator may need to create
+.Pa /var/db/llama-model
+and grant the account running
+.Nm
+write access to it, e.g.
+.Bd -literal -offset indent
+install -d -o SERVICE_USER /var/db/llama-model/catalog
+.Ed
 .It Ev LLAMA_GLOBAL_ARGS
 Path to the global arguments file.
 Default:
@@ -355,9 +380,38 @@ Swap a model's underlying quantization by repointing its symlink, then
 verify before starting it:
 .Bd -literal -offset indent
 ln -sfn ~/models/new-long-model-name.gguf \e
-    ~/models/catalog/llama8/model.gguf
+    /var/db/llama-model/catalog/llama8/model.gguf
 llama-model show llama8
 .Ed
+.Sh MIGRATION
+Versions before 0.3.0 defaulted
+.Ev LLAMA_MODEL_ROOT
+to
+.Pa ~/models/catalog
+and
+.Ev LLAMA_SERVER
+to a build path under
+.Ev HOME .
+Neither default depends on
+.Ev HOME
+anymore.
+An existing per-user catalog keeps working unchanged if you set
+.Ev LLAMA_MODEL_ROOT
+to its old path, either in
+.Pa ~/.config/llama-models.conf
+or the environment; nothing is moved, copied, or deleted automatically.
+To adopt the new system catalog instead, create it and copy the old one's
+aliases into it:
+.Bd -literal -offset indent
+install -d -o SERVICE_USER /var/db/llama-model/catalog
+cp -R ~/models/catalog/. /var/db/llama-model/catalog/
+.Ed
+Copying preserves the alias directories' symlinks as symlinks (add
+.Fl P
+on systems where
+.Xr cp 1
+does not do so by default); the links still point at the original
+downloaded files, which are untouched either way.
 .Sh SEE ALSO
 .Xr sh 1 ,
 .Xr daemon 8
